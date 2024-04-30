@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """
 @author: youyanggu
 
@@ -7,6 +8,7 @@ Tool to retrieve GroupMe messages using the GroupMe API and output them to a CSV
 
 import json
 import requests
+from requests.adapters import HTTPAdapter, Retry
 import datetime
 import csv
 import argparse
@@ -22,6 +24,13 @@ parser.add_argument('-o', '--overwrite', help='overwrite csv file', action="stor
 
 URL = 'https://api.groupme.com/v3'
 TOKEN = None
+
+# Configure request library retry
+s = requests.Session()
+retries = Retry(total=10,
+                backoff_factor=0.1,
+                status_forcelist=[ 500, 502, 503, 504 ])
+s.mount('https://', HTTPAdapter(max_retries=retries))
 
 ########## STAT FUNCTIONS ##########
 
@@ -51,7 +60,7 @@ def getDMs():
 		return None
 	d = {}
 	for group in groups:
-		name = str(group['other_user']['name'].encode('utf-8').strip())
+		name = str(group['other_user']['name'].strip())
 		count = group['messages_count']
 		if count > 0:
 			d[name] = {}
@@ -71,7 +80,7 @@ def getGroups():
 		return None
 	d = {}
 	for group in groups:
-		name = group['name'].encode('utf-8').strip()
+		name = group['name'].strip()
 		count = group['messages']['count']
 		if count > 0:
 			d[name] = {}
@@ -152,18 +161,18 @@ def countMsgs(group_name, group_id, direct_msgs, csv_file=None, processTextFunc=
 	sinceTs: only process messages after this timestamp
 	"""
 	if csv_file:
-		f = open(csv_file, "ab")
+		f = open(csv_file, "w", encoding='utf-8')
 		wr = csv.writer(f, dialect="excel")
 	if type(sinceTs) == datetime.datetime:
 		sinceTs = int(sinceTs.strftime("%s"))
 	totalCount = getGroupCount(group_id, direct_msgs)
-	print "Counting messages for {} (Total: {})".format(group_name, totalCount)
+	print("Counting messages for {} (Total: {})".format(group_name, totalCount))
 	curCount = 0
 	users = {}
 	lastMsgId = str(int(getLastMsgId(group_id, direct_msgs))+1) # get current msg as well
 	while (curCount < totalCount):
 		if curCount % 100 == 0:
-			print curCount
+			print(curCount)
 		msgs = getMessages(group_id, direct_msgs, lastMsgId)
 		if not msgs:
 			break
@@ -174,13 +183,13 @@ def countMsgs(group_name, group_id, direct_msgs, csv_file=None, processTextFunc=
 		if not msgs:
 			break
 		for msg in msgs:
-			if msg['created_at'] < sinceTs:
-				return curCount, users
+			#if msg['created_at'] < sinceTs:
+			#	return curCount, users
 			curCount += 1
 			try:
 				created_at = datetime.datetime.fromtimestamp(msg['created_at']).strftime('%Y-%m-%d %H:%M:%S')
 			except:
-				print "Error parsing created_at"
+				print("Error parsing created_at")
 				created_at = ""
 			user = msg['name']
 			text = msg['text']
@@ -194,7 +203,8 @@ def countMsgs(group_name, group_id, direct_msgs, csv_file=None, processTextFunc=
 			if user not in users:
 				users[user] = []
 			if csv_file:
-				wr.writerow([group_name, created_at.encode('utf-8'), user.encode('utf-8'), text.encode('utf-8'), likes])
+				print(group_name, created_at, user, text, likes)
+				wr.writerow([group_name, created_at, user, text, likes])
 			if processTextFunc is not None:
 				data = processTextFunc(msg)
 				users[user].append(data)
@@ -212,25 +222,25 @@ def main(retrieve_all, direct_msgs, group_name, csv_file, overwrite):
 		raise RuntimeError("Cannot retrieve groups. Is your token correct?")
 
 	if retrieve_all:
-		for k, v in groups.iteritems():
+		for k, v in groups.items():
 			new_csv_file = k.lower().replace(' ', '_')+'.csv' if not csv_file else csv_file
 			count, _ = countMsgs(k, v['id'], direct_msgs, csv_file=new_csv_file)
-			print "Processed {} messages. Wrote to {}.".format(count, csv_file)
+			print ("Processed {} messages. Wrote to {}.".format(count, csv_file))
 	elif group_name:
 		if group_name not in groups:
-			print "Group name not found. Here are the list of groups:"
-			print getGroupNames(groups)
+			print("Group name not found. Here are the list of groups:")
+			print(getGroupNames(groups))
 		else:
 			if csv_file and os.path.isfile(csv_file) and not overwrite:
 				raise IOError("File already exists. Try setting --overwrite.")
 			if not csv_file:
 				csv_file = group_name.lower().replace(' ', '_')+'.csv'
 			count, _ = countMsgs(group_name, groups[group_name]['id'], direct_msgs, csv_file=csv_file)
-			print "Processed {} messages. Wrote to {}.".format(count, csv_file)
+			print ("Processed {} messages. Wrote to {}.".format(count, csv_file))
 	else:
 		sorted_groups = sortByCount(groups)
-		print "Here is all the groups and their message counts:"
-		print sorted_groups
+		print("Here is all the groups and their message counts:")
+		print(sorted_groups)
 
 if __name__ == "__main__":
 	args = parser.parse_args()
